@@ -7,15 +7,17 @@ from bs4 import BeautifulSoup
 from tqdm import tqdm
 
 from configs import configure_argument_parser, configure_logging
-from constants import BASE_DIR, MAIN_DOC_URL, MAIN_PEP_URL, EXPECTED_STATUS
+from constants import (BASE_DIR, MAIN_DOC_URL, MAIN_PEP_URL,
+                       EXPECTED_STATUS, PARSER, VERSION_STATUS_PATTERN)
 from outputs import control_output
+from exceptions import NotFoundException
 from utils import get_response, find_tag
 
 
 def whats_new(session):
     whats_new_url = urljoin(MAIN_DOC_URL, 'whatsnew/')
     response = get_response(session, whats_new_url)
-    soup = BeautifulSoup(response.text, features='lxml')
+    soup = BeautifulSoup(response.text, PARSER)
     main_div = find_tag(soup, 'section', attrs={'id': 'what-s-new-in-python'})
     div_with_ul = find_tag(main_div,
                            'div', attrs={'class': 'toctree-wrapper'})
@@ -29,7 +31,7 @@ def whats_new(session):
         response = get_response(session, version_link)
         if response is None:
             continue
-        soup = BeautifulSoup(response.text, 'lxml')
+        soup = BeautifulSoup(response.text, PARSER)
         h1 = find_tag(soup, 'h1')
         dl = find_tag(soup, 'dl')
         dl_text = dl.text.replace('\n', ' ')
@@ -42,7 +44,7 @@ def whats_new(session):
 
 def latest_versions(session):
     response = get_response(session, MAIN_DOC_URL)
-    soup = BeautifulSoup(response.text, 'lxml')
+    soup = BeautifulSoup(response.text, PARSER)
 
     sidebar = find_tag(soup, 'div', {'class': 'sphinxsidebarwrapper'})
 
@@ -53,13 +55,12 @@ def latest_versions(session):
             a_tags = ul.find_all('a')
             break
     else:
-        raise Exception('Ничего не нашлось')
+        raise NotFoundException('Ничего не нашлось')
 
     results = [('Ссылка на документацию', 'Версия', 'Статус')]
-    pattern = r'Python (?P<version>\d\.\d+) \((?P<status>.*)\)'
     for a_tag in a_tags:
         link = a_tag['href']
-        text_match = re.search(pattern, a_tag.text)
+        text_match = VERSION_STATUS_PATTERN.search(a_tag.text)
         if text_match is not None:
             version, status = text_match.groups()
         else:
@@ -74,7 +75,7 @@ def download(session):
     downloads_url = urljoin(MAIN_DOC_URL, 'download.html')
     response = get_response(session, downloads_url)
 
-    soup = BeautifulSoup(response.text, 'lxml')
+    soup = BeautifulSoup(response.text, PARSER)
 
     main_tag = find_tag(soup, 'div', {'role': 'main'})
     table_tag = find_tag(main_tag, 'table', {'class': 'docutils'})
@@ -100,7 +101,7 @@ def download(session):
 
 def pep(session):
     response = get_response(session, MAIN_PEP_URL)
-    soup = BeautifulSoup(response.text, 'lxml')
+    soup = BeautifulSoup(response.text, PARSER)
     numerical_index = find_tag(soup, 'section', {'id': 'numerical-index'})
     tbody = find_tag(numerical_index, 'tbody')
     tr = tbody.find_all('tr')
@@ -121,7 +122,7 @@ def pep(session):
         pep_link_short = pep.find('a')['href']
         pep_link_full = urljoin(MAIN_PEP_URL, pep_link_short)
         response = get_response(session, pep_link_full)
-        soup = BeautifulSoup(response.text, 'lxml')
+        soup = BeautifulSoup(response.text, PARSER)
         dl_table = find_tag(soup, 'dl', {'class': 'rfc2822 field-list simple'})
         status_line = dl_table.find(string='Status')
         if status_line:
